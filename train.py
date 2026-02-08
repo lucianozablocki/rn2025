@@ -29,12 +29,13 @@ def get_default_config():
     """Return default configuration."""
     return {
         # Model hyperparameters
-        "num_layers": 2,
-        "base_channels": 16,
-        "kernel_size": 3,
-        "latent_dim": 64,
+        "latent_dim": 128,
         "dropout": 0.2,
         "use_linear": True,
+        "use_extra_layer": False,
+        "conv1_channels": 16,
+        "conv2_channels": 8,
+        "kernel_size": 3,
         
         # Training hyperparameters
         "optimizer": "adam",
@@ -115,12 +116,13 @@ def main():
     # Create model
     logger.info("Creating model...")
     model = ConvAutoencoder(
-        num_layers=config['num_layers'],
-        base_channels=config['base_channels'],
-        kernel_size=config['kernel_size'],
         latent_dim=config['latent_dim'],
         dropout=config['dropout'],
         use_linear=config['use_linear'],
+        use_extra_layer=config['use_extra_layer'],
+        conv1_channels=config['conv1_channels'],
+        conv2_channels=config['conv2_channels'],
+        kernel_size=config['kernel_size'],
         device=device
     )
     
