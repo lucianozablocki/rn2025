@@ -1,16 +1,16 @@
 {
-    "latent_dim": 128,
-    "dropout": 0.2,
+    "latent_dim": 256,
+    "dropout": 0.1,
     "use_linear": true,
-    "use_extra_layer": false,
-    "conv1_channels": 16,
-    "conv2_channels": 8,
+    "use_extra_layer": true,
+    "conv1_channels": 32,
+    "conv2_channels": 64,
     "kernel_size": 3,
     
     "optimizer": "adam",
     "lr": 0.001,
-    "batch_size": 64,
-    "epochs": 100,
+    "batch_size": 128,
+    "epochs": 50,
     
     "data_dir": "./data",
     "val_split": 0.2,
