@@ -51,10 +51,9 @@ class ConvClassifierHead(nn.Module):
         self.num_classes = num_classes
         self.dropout_rate = dropout
         
-        # Determine spatial reshape dimensions for latent_dim
-        # Find factors that give a reasonable spatial size
-        # e.g., latent_dim=128 -> 8 channels x 4 x 4
-        self.spatial_size, self.input_channels = self._compute_spatial_dims(latent_dim)
+        # Fixed spatial reshape for latent_dim=256: 16 channels × 4 × 4
+        self.spatial_size = 4
+        self.input_channels = latent_dim // (self.spatial_size * self.spatial_size)
         
         # Unflatten to spatial representation
         self.unflatten = nn.Unflatten(
@@ -84,19 +83,6 @@ class ConvClassifierHead(nn.Module):
             nn.Flatten(),
             nn.Linear(conv2_channels, num_classes)  # Raw logits
         )
-    
-    def _compute_spatial_dims(self, latent_dim):
-        """Compute (spatial_size, channels) to reshape latent_dim into C x H x H."""
-        # Try to find a nice square spatial size
-        # Start with small spatial sizes and find matching channels
-        for spatial in [2, 3, 4, 5, 6, 7, 8]:
-            if latent_dim % (spatial * spatial) == 0:
-                channels = latent_dim // (spatial * spatial)
-                if channels >= 1:
-                    return spatial, channels
-        
-        # Fallback: use 1x1 spatial with all channels
-        return 1, latent_dim
     
     def forward(self, x):
         x = self.unflatten(x)
