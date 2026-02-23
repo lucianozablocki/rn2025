@@ -2,10 +2,10 @@
 Training script for FashionMNIST Classifier with Encoder as feature extractor.
 
 Supports 4 training variants:
-    --variant 1: Encoder pretrained + frozen, train classifier only
-    --variant 2: Encoder random + unfrozen, train end-to-end from scratch
-    --variant 3: Encoder pretrained + unfrozen, fine-tune both
-    --variant 4: Encoder random + frozen, classifier random (no training) - baseline
+    --variant 1: Encoder PRETRAINED + FROZEN, train classifier only
+    --variant 2: Encoder NOT PRETRAINED + NOT FROZEN, train end-to-end from scratch
+    --variant 3: Encoder PRETRAINED + NOT FROZEN, fine-tune both
+    --variant 4: Encoder NOT PRETRAINED + FROZEN, train classifier only
 
 Usage:
     # Variant 1: Pretrained frozen encoder
@@ -17,7 +17,7 @@ Usage:
     # Variant 3: Fine-tune pretrained
     python train_classifier.py --variant 3 --encoder_path results/refactor/encoder.pth --encoder_config results/refactor/encoder_config.json --out_path results/classifier_v3
 
-    # Variant 4: Random frozen encoder, no training baseline
+    # Variant 4: Random frozen encoder, train classifier only
     python train_classifier.py --variant 4 --encoder_config results/refactor/encoder_config.json --out_path results/classifier_v4
 """
 
@@ -87,9 +87,9 @@ def get_variant_description(variant):
     """Return human-readable description of training variant."""
     descriptions = {
         1: "Encoder PRETRAINED + FROZEN, train classifier only",
-        2: "Encoder RANDOM + UNFROZEN, train end-to-end from scratch",
-        3: "Encoder PRETRAINED + UNFROZEN, fine-tune both",
-        4: "Encoder RANDOM + FROZEN, classifier RANDOM (no training) - baseline"
+        2: "Encoder NOT PRETRAINED + NOT FROZEN, train end-to-end from scratch",
+        3: "Encoder PRETRAINED + NOT FROZEN, fine-tune both",
+        4: "Encoder NOT PRETRAINED + FROZEN, train classifier only"
     }
     return descriptions.get(variant, "Unknown variant")
 
@@ -217,7 +217,7 @@ def main():
         )
         
     elif args.variant == 4:
-        # Random + frozen encoder, NO training (baseline)
+        # Random + frozen encoder, train classifier only
         # Load encoder config for architecture
         with open(args.encoder_config, 'r') as f:
             encoder_config = json.load(f)
@@ -247,86 +247,55 @@ def main():
     logger.info(f"Encoder frozen: {model.encoder_frozen}")
     logger.info(f"Encoder output dim: {model.encoder.output_dim}")
     
-    # For variant 4, skip training and just evaluate
-    if args.variant == 4:
-        logger.info("=" * 60)
-        logger.info("VARIANT 4: Skipping training (baseline with random classifier)")
-        logger.info("=" * 60)
-        
-        # Create trainer just for evaluation
-        trainer = ClassifierTrainer(
+    # Training for all variants
+    trainer = ClassifierTrainer(
             model=model,
             optimizer_name=config['optimizer'],
             lr=config['lr'],
-            device=device
-        )
+        device=device
+    )
+    
+    # Training loop
+    logger.info("Starting training...")
+    metrics_history = []
+    best_val_accuracy = 0.0
+    best_val_accuracy_epoch = 0
+    
+    for epoch in range(config['epochs']):
+        logger.info(f"Epoch {epoch + 1}/{config['epochs']}")
         
-        # Evaluate on all sets
-        train_metrics = trainer.evaluate(train_loader)
+        # Train
+        train_metrics = trainer.fit(train_loader)
+        train_metrics = {f"train_{k}": v for k, v in train_metrics.items()}
+        
+        # Validate
         val_metrics = trainer.evaluate(val_loader)
-        test_metrics = trainer.evaluate(test_loader)
+        val_metrics = {f"val_{k}": v for k, v in val_metrics.items()}
         
-        logger.info(f"Train - Loss: {train_metrics['loss']:.6f}, Accuracy: {train_metrics['accuracy']:.2f}%")
-        logger.info(f"Val   - Loss: {val_metrics['loss']:.6f}, Accuracy: {val_metrics['accuracy']:.2f}%")
-        logger.info(f"Test  - Loss: {test_metrics['loss']:.6f}, Accuracy: {test_metrics['accuracy']:.2f}%")
+        # Combine metrics
+        epoch_metrics = {'epoch': epoch + 1}
+        epoch_metrics.update(train_metrics)
+        epoch_metrics.update(val_metrics)
+        metrics_history.append(epoch_metrics)
         
-        # Save results
-        metrics_history = [{
-            'epoch': 0,
-            'train_loss': train_metrics['loss'],
-            'train_accuracy': train_metrics['accuracy'],
-            'val_loss': val_metrics['loss'],
-            'val_accuracy': val_metrics['accuracy'],
-        }]
-        
-    else:
-        # Normal training for variants 1, 2, 3
-        trainer = ClassifierTrainer(
-            model=model,
-            optimizer_name=config['optimizer'],
-            lr=config['lr'],
-            device=device
+        # Log metrics
+        logger.info(
+            f"  train_loss: {train_metrics['train_loss']:.6f} | "
+            f"train_acc: {train_metrics['train_accuracy']:.2f}% | "
+            f"val_loss: {val_metrics['val_loss']:.6f} | "
+            f"val_acc: {val_metrics['val_accuracy']:.2f}%"
         )
         
-        # Training loop
-        logger.info("Starting training...")
-        metrics_history = []
-        best_val_accuracy = 0.0
-        
-        for epoch in range(config['epochs']):
-            logger.info(f"Epoch {epoch + 1}/{config['epochs']}")
-            
-            # Train
-            train_metrics = trainer.fit(train_loader)
-            train_metrics = {f"train_{k}": v for k, v in train_metrics.items()}
-            
-            # Validate
-            val_metrics = trainer.evaluate(val_loader)
-            val_metrics = {f"val_{k}": v for k, v in val_metrics.items()}
-            
-            # Combine metrics
-            epoch_metrics = {'epoch': epoch + 1}
-            epoch_metrics.update(train_metrics)
-            epoch_metrics.update(val_metrics)
-            metrics_history.append(epoch_metrics)
-            
-            # Log metrics
-            logger.info(
-                f"  train_loss: {train_metrics['train_loss']:.6f} | "
-                f"train_acc: {train_metrics['train_accuracy']:.2f}% | "
-                f"val_loss: {val_metrics['val_loss']:.6f} | "
-                f"val_acc: {val_metrics['val_accuracy']:.2f}%"
-            )
-            
-            # Track best
-            if val_metrics['val_accuracy'] > best_val_accuracy:
-                best_val_accuracy = val_metrics['val_accuracy']
-                # Save best model
-                torch.save(model.state_dict(), os.path.join(args.out_path, 'best_model.pth'))
-        
-        # Final test evaluation
-        logger.info("Running final test evaluation...")
-        test_metrics = trainer.evaluate(test_loader)
+        # Track best
+        if val_metrics['val_accuracy'] > best_val_accuracy:
+            best_val_accuracy = val_metrics['val_accuracy']
+            best_val_accuracy_epoch = epoch + 1
+            # Save best model
+            torch.save(model.state_dict(), os.path.join(args.out_path, 'best_model.pth'))
+    
+    # Final test evaluation
+    logger.info("Running final test evaluation...")
+    test_metrics = trainer.evaluate(test_loader)
     
     # Save metrics to CSV
     metrics_df = pd.DataFrame(metrics_history)
@@ -345,29 +314,18 @@ def main():
     logger.info(f"Model config saved to {model_config_path}")
     
     # Save test results
-    if args.variant == 4:
-        test_results = {
-            'variant': args.variant,
-            'variant_description': get_variant_description(args.variant),
-            'test_loss': test_metrics['loss'],
-            'test_accuracy': test_metrics['accuracy'],
-            'train_loss': train_metrics['loss'],
-            'train_accuracy': train_metrics['accuracy'],
-            'val_loss': val_metrics['loss'],
-            'val_accuracy': val_metrics['accuracy'],
-        }
-    else:
-        test_results = {
-            'variant': args.variant,
-            'variant_description': get_variant_description(args.variant),
-            'test_loss': test_metrics['loss'],
-            'test_accuracy': test_metrics['accuracy'],
-            'final_train_loss': metrics_history[-1]['train_loss'],
-            'final_train_accuracy': metrics_history[-1]['train_accuracy'],
-            'final_val_loss': metrics_history[-1]['val_loss'],
-            'final_val_accuracy': metrics_history[-1]['val_accuracy'],
-            'best_val_accuracy': best_val_accuracy,
-        }
+    test_results = {
+        'variant': args.variant,
+        'variant_description': get_variant_description(args.variant),
+        'test_loss': test_metrics['loss'],
+        'test_accuracy': test_metrics['accuracy'],
+        'final_train_loss': metrics_history[-1]['train_loss'],
+        'final_train_accuracy': metrics_history[-1]['train_accuracy'],
+        'final_val_loss': metrics_history[-1]['val_loss'],
+        'final_val_accuracy': metrics_history[-1]['val_accuracy'],
+        'best_val_accuracy': best_val_accuracy,
+        'best_val_accuracy_epoch': best_val_accuracy_epoch,
+    }
     
     with open(os.path.join(args.out_path, 'test_results.json'), 'w') as f:
         json.dump(test_results, f, indent=2)
@@ -376,14 +334,11 @@ def main():
     logger.info("=" * 60)
     logger.info("Training complete!")
     logger.info(f"Variant: {args.variant} - {get_variant_description(args.variant)}")
-    
-    if args.variant != 4:
-        logger.info(f"Final train loss: {metrics_history[-1]['train_loss']:.6f}")
-        logger.info(f"Final train accuracy: {metrics_history[-1]['train_accuracy']:.2f}%")
-        logger.info(f"Final val loss: {metrics_history[-1]['val_loss']:.6f}")
-        logger.info(f"Final val accuracy: {metrics_history[-1]['val_accuracy']:.2f}%")
-        logger.info(f"Best val accuracy: {best_val_accuracy:.2f}%")
-    
+    logger.info(f"Final train loss: {metrics_history[-1]['train_loss']:.6f}")
+    logger.info(f"Final train accuracy: {metrics_history[-1]['train_accuracy']:.2f}%")
+    logger.info(f"Final val loss: {metrics_history[-1]['val_loss']:.6f}")
+    logger.info(f"Final val accuracy: {metrics_history[-1]['val_accuracy']:.2f}%")
+    logger.info(f"Best val accuracy: {best_val_accuracy:.2f}%")
     logger.info(f"Test loss: {test_metrics['loss']:.6f}")
     logger.info(f"Test accuracy: {test_metrics['accuracy']:.2f}%")
     logger.info("=" * 60)
