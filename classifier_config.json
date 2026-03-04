@@ -1,0 +1,17 @@
+{
+    "classifier_conv1_channels": 32,
+    "classifier_conv2_channels": 64,
+    "classifier_kernel_size": 5,
+    "classifier_dropout": 0.2,
+    "num_classes": 10,
+
+    "optimizer": "adam",
+    "lr": 0.001,
+    "batch_size": 64,
+    "epochs": 30,
+
+    "data_dir": "./data",
+    "val_split": 0.2,
+    "num_workers": 2,
+    "seed": 42
+}
